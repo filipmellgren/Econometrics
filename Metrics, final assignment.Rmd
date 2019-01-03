@@ -1,0 +1,120 @@
+---
+title: "Metrics, final assignment"
+author: "Filip Mellgren"
+date: '2019-01-02'
+output:
+  pdf_document: default
+  html_document: default
+---
+This is the last assignment for the course 5304 Econometrics. It is ungraded, which is why I could do it in R instead of Stata. Note that this is my first R markdown document.
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+## Importing the data
+We begin by reading the stata file. Turns out we need the library "readstata13" to do this.
+```{r}
+library(readstata13)
+df <- read.dta13("/Volumes/GoogleDrive/Min enhet/Learning/MSc/Econometrics/Metrics/IHDS_2012_Data.dta")
+```
+
+```{r}
+head(df)
+```
+We have a few variables containing demographic information on individuals in India (2012). 
+
+```{r}
+library(tidyverse)
+df <- df %>% filter(EW6 <= 60) %>% filter(EW6 >= 20)
+df <- df %>% mutate(three_plus = FH5CK >= 3)
+```
+We need to reformat the variable EW8 before it is usable in any regression:
+```{r}
+df$EW8 <- as.character(df$EW8)
+df <- df %>% mutate(EW8 = substr(EW8, nchar(EW8) - 1,nchar(EW8)))
+df$EW8 <- strtoi(df$EW8)
+```
+## Linear probability model
+The first task is to use the lpm to estimate marginal probabilities of having three or more children using woman's age and education level.
+
+The linear probability model is simply the regression dependent variable on independent variables. We use the age of the women (EW6), and their years of education (EW8) to predict the probability that they have at least 3 children. We'd expect the unbiased estimates to be positive for age and negative for years of education. I use the option na.exlude so that predictions will insert NA were no prediction could be made.
+```{r}
+library(pander)
+lpm <- lm(three_plus ~ EW6 + EW8, data = df, na.action = na.exclude)
+pander(lpm)
+```
+
+The marginal effect associated with being one year older is `r round(summary(lpm)$coefficients[2], 3)` percentage points more likely to have three or more children and the marginal effect associated with having one more year of schooling is `r round(summary(lpm)$coefficients[3], 3)` percentage 
+points less likely to have three or more children. The signs are what we expected them to be. 
+
+Next, let's find out the range of the predictions:
+
+```{r}
+df <- df %>% mutate(pred_lpm= predict(lpm, type = "response", na.action = na.exclude))
+pct_in_range <- round(sum(df$pred_lpm >= 0 & df$pred_lpm <= 1, na.rm=T)/length(df$pred_lpm),3)*100
+```
+The range of the observations is [`r round(min(df$pred_lpm, na.rm=T),2)`,  `r round(max(df$pred_lpm, na.rm=T),2)`] and `r pct_in_range`% of the observations lie inside the unit interval. It is not ideal to predict probabilities higher than 1 or smaller than 0, so let's move on to theoretically justified models.
+
+## Probit
+We perform the same steps using a probit model. This comes with the advantage of not yielding any predictions outside the unit interval. However, it is somewhat more tedious to obtain marginal effects as these can't be read from the coefficients and the predicted values are similar to the lpm anyway.
+```{r}
+probit <- glm(three_plus ~ EW6 + EW8, family = binomial(link = "probit"), data = df, na.action = na.exclude)
+pander(summary(probit))
+```
+Predict values and obtain range of predicted values:
+```{r}
+df <- df %>% mutate(pred_probit= predict(probit, type = "response", na.action = na.exclude))
+pct_in_range_p <- round(sum(df$pred_probit >= 0 & df$pred_probit <= 1, na.rm=T)/sum(!is.na(df$pred_probit)),3)*100
+```
+
+The range of the predictions is [`r round(min(df$pred_probit, na.rm=T),2)`,  `r round(max(df$pred_probit, na.rm=T),2)`] and `r pct_in_range_p`% of the observations lie inside the unit interval.
+
+```{r}
+library(margins)
+margin_probit <- margins(probit, at = list(EW6 = mean(df$EW6), EW8 = mean(df$EW8, na.rm = TRUE))) 
+margin_probit_spec <- margins(probit, at = list(EW6 = 20, EW8 = 12)) 
+pander(summary(margin_probit)[0:7])
+pander(summary(margin_probit_spec)[0:7])
+```
+The AME column gives the marginal effects at values specified by EW6, and EW8.
+
+## Logit
+We are also told to do the same thing using the logit, essentially repeating the steps from above once more, but with the logit instead of the probit. These two yield very similar predictions, but have different properties that can be useful depending on application. 
+
+```{r}
+logit <- glm(three_plus ~ EW6 + EW8, family = binomial(link = "logit"), data = df, na.action = na.exclude)
+pander(summary(logit))
+```
+The range of the predictions is given by:
+```{r}
+df <- df %>% mutate(pred_logit= predict(logit, type = "response", na.action = na.exclude))
+pct_in_range <- round(sum(df$pred_logit >= 0 & df$pred_logit <= 1, na.rm=T)/sum(!is.na(df$pred_logit)),3)*100
+```
+The range of the predictions is [`r round(min(df$pred_logit, na.rm=T),2)`,  `r round(max(df$pred_logit, na.rm=T),2)`] and `r pct_in_range`% of the observations lie inside the unit interval.
+```{r}
+margin_logit <- margins(logit, at = list(EW6 = mean(df$EW6), EW8 = mean(df$EW8, na.rm = TRUE))) 
+margin_logit_spec <- margins(logit, at = list(EW6 = 20, EW8 = 12)) 
+pander(summary(margin_logit)[0:7])
+pander(summary(margin_logit_spec)[0:7])
+```
+The AME column gives the marginal effects at values specified by EW6, and EW8.
+
+To summarize the marginal effect at the mean value of both variables:
+
+* LPM: `r round(summary(lpm)$coefficients[2], 3)` and `r round(summary(lpm)$coefficients[3], 3)`
+* Probit: `r summary(margin_probit)$AME`
+* Logit: `r summary(margin_logit)$AME`
+
+Probit and logit look very similar indeed. And LPM is not far off either, suggesting this simple model might be preferable if we only care about marginal effects, especially around the mean.
+
+## Scatter plot
+Before wrapping up, I plot both the logit and the lpm against the probit to see how the predictions differed. 
+```{r}
+  df %>%
+  ggplot() +
+  geom_point(aes(pred_logit, pred_probit, colour = "logit")) + 
+  geom_point(aes(pred_lpm, pred_probit, colour = "lpm")) + 
+  xlab("logit/lpm predicted probability") +
+  ylab("probit predicted probability") +
+  ggtitle("Scatter plots")
+```
+The plot confirms the intuition that the results are similar around the mean. However, it is clear that the lpm yields bad predictions around the extreme values.
