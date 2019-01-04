@@ -80,6 +80,8 @@ The AME column gives the marginal effects at values specified by EW6, and EW8.
 ## Logit
 We are also told to do the same thing using the logit, essentially repeating the steps from above once more, but with the logit instead of the probit. These two yield very similar predictions, but have different properties that can be useful depending on application. 
 
+Theoretically, the choice between probit and logit should depend on a distributional assumption of an error term. If it's assumed to be normally distributed, probit should be used. If it's assumed to be logisticallyy distributed, the logit should be be used. In a binary choice framework, the coefficients for EW6 and EW8 and the variables' intensity for a given observation provide indication what choice will be made (a constant also weigh in). The only way that choice is not what was indicated, is if the unobserved error term outweigh the other evidence. The probability that the unobserved error term outweigh the combined evidence is given by the distribution we assumed the error term follows. So if the sum of the sum of the coefficients multiplied by the data for some observation is 2 and we use a probit model, the probability of observing 0 is the probability the error term is -2 std deviations away from its mean (about 5% in a normal distribution).
+
 ```{r}
 logit <- glm(three_plus ~ EW6 + EW8, family = binomial(link = "logit"), data = df, na.action = na.exclude)
 pander(summary(logit))
