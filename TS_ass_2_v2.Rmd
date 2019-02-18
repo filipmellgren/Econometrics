@@ -1,0 +1,218 @@
+---
+title: "Assignment 2 - Time Series, 2019"
+author: "Filip Mellgren, Athina Swahn, Ismael Moreno"
+date: '2019-02-18'
+output:
+  pdf_document:
+    latex_engine: xelatex
+  html_document: default
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning=FALSE)
+```
+# 1 Theory exercises
+
+## 1a Unit root conditions for AR(2) processes:
+Start by writing out the characteristic equation and set it to 0: 
+
+$$(y_t-a_1Ly_t-a_2L^2y_t) = (1-a_1z-a_2z^2)y_t=0$$
+
+If we have that $\vert z \vert =1$, the root is unity and hence, we have a unit root. In economics, we care about the case when $z=1$ which gives us:
+
+$$1-a_1-a_2= 0$$
+Rearranging gives us: $a_1 + a_2 = 1$.
+
+##1b
+
+Substracting $y_{t-1}$ from both sides of (1) and doing some algebra we can get to (2):
+
+$\Delta y_t-y_{t-1}=-y_{t-1}+a_0+a_1 y_{t-1}+a_2 y_{t-2} + \epsilon_t$
+
+$\Delta y_t= a_0+y_{t-1}(a_1-1)+a_2 y_{t-2} + \epsilon_t$
+
+$\Delta y_t= a_0+(a_1+a_2-1)y_{t-1}+a_2 (y_{t-2}-y_{t-1}) + \epsilon_t$
+
+$\Delta y_t= a_0+(a_1+a_2-1)y_{t-1}+(-a_2)(\Delta y_{t-1}) + \epsilon_t$
+
+Which is equivalent to (2) given $\beta_0=a_0$, $\gamma=(a_1+a_2-1)$ and $\beta_1=-a_2$.
+
+##1c
+
+From our answer to 1a we know this AR(2) process is stationary if the condition $a_1+a_2=1$ (C1) holds (assuming a positive unit root). Therefore, it can be easily seen how the null hypothesis (H1) $\gamma=(a_1+a_2-1)=0$ is equivalent to the unit root condition.
+
+## 1d
+If we fail to reject the null hypothesis that $\gamma = 0$, assuming there are no further tests at our disposal, we work under the assumption of the process having a unit root. This means we have a difference stationary series. Therefore, we take the first difference to obtain a stationary series and select the best fitting ARMA(p,q) model, estimating the $p$ AR coeffcients, and the $q$ MA coefficients. We could also select the best ARIMA(p,1,q) directly.
+
+If we do reject the null hypothesis that $\gamma = 0$, and accept the alternative hypothesis: $\gamma \in (-2,0)$, then we have a stationary series, and can select the best fitting (using AIC or BIC) ARMA(p,q) model, estimating its associated parameters.
+
+## 1e
+Following the assumptions, we get the following the model:
+
+$$y_t = a_1 y_{t-1} + a_2y_{t-2} + \varepsilon_t $$
+Where $a_1 + a_2 = 1$, and $y_{-1} = y_0 = 0$.
+
+The expected value is given by: $E(y_t \vert \Omega_1) = E(a_1y_{t-1} + a_2y_{t-2} + \varepsilon_t) = a_1E(y_{t-1}) + a_2E(y_{t-2})$. 
+
+Since $a_1 + a_2 = 1$, any element in the sequence is a convex combination of its preceeding two elements. Since $y_{-1} = y_0 = 0$, it follows by induction that $E(y_t \vert \Omega_1) =0$.
+
+We now show that this process is not reverting towards $E(y_t)$ by a counter example using the provided $y_{t-2} = 6, y_{t-1} = 7, \varepsilon_{t+s} = 0, s = 0,1,...$. Begin with $E(y_t \vert \Omega_{t-1}) = E(a_1y_{t-1} + a_2y_{t-2} + \varepsilon_t \vert \Omega_{t-1}) = a_1E(y_{t-1}) + a_2E(y_{t-2}) + E(\varepsilon_t) = 7a_1 + 6a_2 \in [6,7]$ Which is not "mean reverting" to $E(y_t \vert \Omega_1) = 0$.
+
+## 1f
+The efficient-market hypothesis (that is, prices reflect al available information at a given point in time) derives in, for example, the random walk hypothesis of financial markets. Under this theory, stock market prices follow a random walk and therefore cannot be predicted. Hence, stock-market prices would be an example of unit root processes according to economic theory.
+
+## 1g
+Drawbacks of detrending a a difference equation:
+A DS, with a unit root, can only be transformed into a stationary series by differencing. If you detrend a DS, the stochastic portion of the trend is not eliminated. Thereto, the unit root is not removed and the model is still not stationary.
+
+Drawbacks of differencing a trend stationary model: 
+A trend stationary series, can be detrended by removing the deterministic trend. However, if you difference a trend stationary series, it only introduces a noninvertible unit root process into the MA component of the model.
+
+# 2 Practical exercices
+
+## 2a
+
+Conduct the augmented Dickey-Fuller (ADF) test to test the purchasing power parity (PPP) hypothesis using data of the real effective exchange rate (REER). You find the data in the file A2 2a 2019.dta (quarterly frequency, 1980Q1-2013Q1,T = 133). The data set contains the REER series (CPI based) for a total of eight countries from which you may choose a subset of four countries. As a reference you may consider the example in the textbook pp.211-215. What do you conclude?
+
+```{r load_data, include = FALSE}
+library(rio)
+library(tidyverse)
+df_a <- as_tibble(import("A2_2a_2019.dta"))
+df_a <- df_a %>% select(Date, AU, CA, JP, US) # Only need 4 countries
+```
+
+```{r wrangle}
+# Make the date variable a number
+df_a <- df_a %>% mutate(year = as.numeric(str_sub(Date, start = 1, end = 4)),
+                Q = as.numeric(str_sub(Date,-1, -1)),
+                date = year + (Q-1)/4)
+```
+
+```{r viz}
+# Plot the 4 countries real effective exchange rate. 
+# We take the log of the values relative to the first year
+df_a <- df_a %>% mutate(r_CA = log(CA/100),
+                r_AU = log(AU/100),
+                r_JP = log(JP/100),
+                r_US = log(US/100))
+                
+df_a %>%
+  gather(key = "Country", value = "Index", r_AU, r_CA, r_JP, r_US) %>%
+  ggplot(aes(x = date , y = Index, color = Country)) +
+  geom_line() +
+  labs(title = "Are exchange rates stationary?", x = "Year",
+       y = "REER")
+```
+
+
+```{r}
+# See Solutions for 2016
+
+library(tseries)
+library(forecast)
+library(urca)
+
+# Unsure about none or drift
+ADF_AU <- ur.df(df_a$r_AU, type = "none", lags = 12, selectlags = "AIC") # ADF_test(df_a$r_AU)
+ADF_CA <- ur.df(df_a$r_CA, type = "none", lags = 12, selectlags = "AIC") # ADF_test(df_a$r_CA)
+ADF_JP <- ur.df(df_a$r_JP, type = "none", lags = 12, selectlags = "AIC") #ADF_test(df_a$r_JP)
+ADF_US <- ur.df(df_a$r_US, type = "none", lags = 12, selectlags = "AIC") #ADF_test(df_a$r_US)
+```
+We run augmented Dickey Fuller tests (without constant or trend, as the series plot look flat) on the log of all four REER processes and select lag lenghts using the AIC (setting the max at 12). The observed test statistics from the different ADF tests are as follows:
+
+- AU: `r round(ADF_AU@teststat,3)`
+- CA: `r round(ADF_CA@teststat,3)`
+- JP: `r round(ADF_JP@teststat,3)`
+- US: `r round(ADF_US@teststat,3)`
+
+These test statistics are evaluated against the critical value -1.95. The REER processes from the US and Japan both seem to be stationary series. However, the other two are likely false negatives due to the lower power of the ADF test. So there is some support for rejecting the null of a unit root, meaning there is support for the PPP theory.
+
+## Exercise 2b
+
+Conduct the ADF, the Elliott, Rothenberg, and Stock (ERS) test, and the Perron test for the S&P 500 Index series (transforming the data, taking logs). You find the data in the file A2 2b 2019.dta (quarterly frequency, 1973Q1-2018Q4, T = 184). What do you conclude?
+
+```{r}
+# Check out assignment 2 2016 for this part
+df_b <- as_tibble(import("A2_2b_2019.dta"))
+
+# Create a numeric date variable
+df_b <- df_b %>% mutate(year = as.numeric(str_sub(Date, start = 1, end = 4)), Q = as.numeric(str_sub(Date,-1, -1)), date = year + (Q-1)/4)
+# Taking the log
+df_b <- df_b %>% mutate(lsp500 = log(sp500))
+```
+
+```{r}
+# Plot the logged data
+df_b %>%
+  ggplot(aes(x = date, y = lsp500)) + 
+           geom_line() +
+            labs(title = "Stocks are up", subtitle = "and there is a linear trend", y = "(log) S&P500", x = "Time")
+```
+
+### ADF - trend stationarity
+
+We run a simple ADF test with constant and trend, selecting number of AR terms automatically using the AIC.
+```{r}
+adf_b <- urca::ur.df(df_b$lsp500, type = "trend", lags = 12, selectlags = "AIC")
+summary(adf_b)
+```
+The test gives support for the null hypothesis that there is a unit root, as the observed test statistic `r round(adf_b@teststat[1],2)` is too small. However, this could in principle be a result of having a low powered test. We proceed with the ADFGLS/ERS test.
+
+### ADFGLS/ERS
+
+```{r ERS}
+# Think we should do this for many kinds of lags
+ers <- urca::ur.ers(df_b$lsp500, type="DF-GLS", model="trend", lag.max=6) # Haven't checked parameters with the book yet! UPDATE; DF-GLS is correct
+
+# This ERS thing with type DF gls is actually: "ADF-type test applied to the detrended data without intercept"
+summary(ers)
+```
+Again, the result from the ERS is not significantly different from 0 as `r round(ers@teststat,2)` is too small. We don't reject the null that the log of the stock data has a unit root.
+
+```{r Perron2}
+# According to the lecture. This really does "step 3" from the book in two steps
+# Data preparations: ####
+# Create a time variable from the date variable (perhaps not strictly necessary)
+df_b <- df_b %>% mutate(time = 4*(date-first(date)))
+
+# tau indicates when the structural change might have occurred
+tau <- 144 # 143 looks like where the break occured, inspect the data!
+
+# Define Dp & Dl STILL a question whether we use both Dp and Dl
+df_b <- df_b %>% mutate(Dp = if_else(time == tau +1 , 1, 0),
+                        Dl = if_else(time > tau, 1, 0))
+
+# OLS, save the residuals
+detrended_fit <- lm(lsp500 ~  time + Dl + Dp, data = df_b) # Do we need to use a lag here?
+residuals <- detrended_fit$residuals
+
+# ADF This test tests for the AR coefficient equals 1
+perron_adf <- ur.df(residuals, type = "none", lags = 12, selectlags = "AIC") # If we reject, there is no unit root in the residuals.
+# ur.df(residuals, type = "trend", lags = 1, selectlags = "AIC") sure we should have lags = 1? If so, they give the same result
+
+```
+### Perron test
+
+We now turn to the Perron test to see whether the series is stationary with a structural break (we test if there is a level shift) around observation `r tau`.
+```{r}
+summary(perron_adf)
+```
+
+The test statistic is `r round(perron_adf@teststat, 2)` which is large enough in magnitude for us to reject the null hypothesis of a unit root. This supports the alternative hypothesis that stocks are trend stationary with structural breaks, hence not random walks as finance theory posits. We plot the logged series again with its associated structural break. Supposedly, the stock price is trend reverting to the estimated fit.
+
+```{r}
+level_fit <- lm(lsp500 ~ time + Dl, data = df_b)
+#trend_level_fit <- lm(lsp500 ~ time + Dl, data = df_b)
+
+df_b %>% mutate(Fit = level_fit$fitted.values) %>%
+  gather(key = "Type", value = "Index", lsp500, Fit) %>%
+  ggplot(aes(x = date, y = Index, color = Type)) +
+  geom_line() +
+  labs(title = "Structural break after the shift", y = "(log) S&P500", x = "Time")
+  
+```
+
+## 2c Other tests
+Even though we used the highest power tests to identify the unit root in the process, we may want to consider other structural breaks. For example, the series seems to deviate from a pretty regular growth starting in 1996. 
